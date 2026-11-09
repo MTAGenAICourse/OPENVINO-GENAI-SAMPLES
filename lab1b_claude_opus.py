@@ -39,16 +39,27 @@ def main():
     load_dotenv()                    # reads ANTHROPIC_API_KEY
     client = anthropic.Anthropic()
 
-    start = time.time()
-    resp = client.beta.messages.create(
+    request = dict(
         model="claude-opus-5-5",
         max_tokens=16000,
         system="You are a concise tutor.",
         messages=[{"role": "user", "content": args.prompt}],
         output_config={"effort": args.effort},   # default on Opus 5.5: medium
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",                     # reroute if a safety check declines
     )
+
+    start = time.time()
+    try:
+        resp = client.beta.messages.create(
+            **request,
+            betas=["server-side-fallback-2026-07-01"],
+            fallbacks="default",                 # reroute if a safety check declines
+        )
+    except anthropic.BadRequestError as e:
+        # Server-side fallback is opt-in per workspace. Not enabled? Run without it.
+        if "server_side_fallback" not in str(e):
+            raise
+        print("(server-side fallback not enabled for this workspace - running without it)\n")
+        resp = client.messages.create(**request)
     elapsed = time.time() - start
 
     if resp.stop_reason == "refusal":
