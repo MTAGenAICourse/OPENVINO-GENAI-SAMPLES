@@ -7,10 +7,9 @@ import io
 import time
 import json
 from typing import Dict, List, Any, TypedDict, Annotated
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from enum import Enum
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolExecutor
 import operator
 
 class TaskType(Enum):
@@ -81,24 +80,23 @@ class LangGraphVisionAgent:
         
         return workflow.compile()
     
-    def preprocess_image_node(self, state: AgentState) -> AgentState:
+    # 📚 EDUCATIONAL: every node returns ONLY the keys it changes.
+    # LangGraph merges that partial update into the state. "results" has an
+    # operator.add reducer, so returning {"results": [step]} APPENDS one item.
+    # Returning the whole state would re-append every earlier result each time.
+
+    def preprocess_image_node(self, state: AgentState) -> dict:
         """Node: Preprocess image for model input"""
+        # Image is already passed as a tensor; nothing to change
+        return {}
+
+    def execute_analysis_step_node(self, state: AgentState) -> dict:
+        """Node: Execute a single analysis step, retrying it if the answer is low quality"""
+        current_step_idx = state["current_step"]
+        workflow = state["workflow"]
+        if current_step_idx >= len(workflow):
+            return {}
         try:
-            # Image is already passed as tensor, just return state
-            return state
-        except Exception as e:
-            state["error"] = f"Preprocessing error: {str(e)}"
-            return state
-    
-    def execute_analysis_step_node(self, state: AgentState) -> AgentState:
-        """Node: Execute a single analysis step"""
-        try:
-            current_step_idx = state["current_step"]
-            workflow = state["workflow"]
-            
-            if current_step_idx >= len(workflow):
-                return state
-            
             step = workflow[current_step_idx]
             image_tensor = state["image_tensor"]
             pipeline = state["pipeline"]
@@ -117,82 +115,54 @@ Focus only on observable facts. Format your response as a single clear statement
             # Clean up result
             result = result.split("User:")[0].split("Assistant:")[0].split("#")[0].strip()
             
-            # Update step with results
-            step.result = result
-            step.timestamp = time.strftime("%H:%M:%S")
-            step.confidence = f"{time.time() - start_time:.2f}s"
-            
-            # Add to results
-            if "results" not in state:
-                state["results"] = []
-            state["results"].append(step)
-            
-            # Increment step counter
-            state["current_step"] = current_step_idx + 1
-            
-            return state
-            
+            # 📚 EDUCATIONAL: Quality Validation & Retry -- the KEY agentic pattern.
+            # The agent checks its own output. A low-quality answer is NOT
+            # recorded and the step counter does not advance, so the graph
+            # loops back and retries this step (up to max_retries times).
+            retry_count = state.get("retry_count", 0)
+            max_retries = 2
+            if self._is_low_quality_result(result) and retry_count < max_retries:
+                print(f"🔄 RETRY: Step {step.step_number} produced a low-quality result. "
+                      f"Attempt {retry_count + 1}/{max_retries}")
+                return {"retry_count": retry_count + 1}
+            if self._is_low_quality_result(result):
+                print(f"⚠️ WARNING: Step {step.step_number} still low quality after "
+                      f"{max_retries} retries. Continuing...")
+
+            # Record a copy of the step (keeps the workflow definition unchanged)
+            done = replace(step, result=result,
+                           timestamp=time.strftime("%H:%M:%S"),
+                           confidence=f"{time.time() - start_time:.2f}s")
+            return {"results": [done],                     # appended by the reducer
+                    "current_step": current_step_idx + 1,  # move to the next step
+                    "retry_count": 0}
+
         except Exception as e:
-            state["error"] = f"Analysis error: {str(e)}"
-            return state
-    
-    def check_workflow_complete_node(self, state: AgentState) -> AgentState:
+            # Record the error and move on, so a failing step cannot loop forever
+            return {"error": f"Analysis error: {str(e)}",
+                    "current_step": current_step_idx + 1,
+                    "retry_count": 0}
+
+    def check_workflow_complete_node(self, state: AgentState) -> dict:
         """Node: Check if workflow is complete"""
         # This is just a pass-through node for clarity
-        return state
-    
+        return {}
+
     def should_continue(self, state: AgentState) -> str:
         """
-        📚 EDUCATIONAL: Conditional Edge with Quality Validation & Retry
-        
-        This is the KEY agentic pattern - the agent evaluates its own output
-        and decides whether to:
-        1. Continue to next step
-        2. Retry the current step (if quality is low)
-        3. Complete the workflow
-        
-        Retry logic prevents poor results from propagating through the pipeline.
+        📚 EDUCATIONAL: Conditional Edge
+
+        A routing function only READS the state and returns the name of the
+        next branch. LangGraph does not save changes made here, which is why
+        the retry bookkeeping lives in execute_analysis_step_node.
+          - "complete": every step is done -> make_decision
+          - "continue": run the next step, or retry the current one
         """
-        current_step = state.get("current_step", 0)
-        workflow = state["workflow"]
-        results = state.get("results", [])
-        
-        # Check if we have results to validate
-        if results:
-            last_result = results[-1]
-            
-            # Quality validation - check if last result needs retry
-            if self._is_low_quality_result(last_result.result):
-                retry_count = state.get("retry_count", 0)
-                max_retries = 2  # Maximum retry attempts per step
-                
-                if retry_count < max_retries:
-                    # Log the retry decision
-                    print(f"🔄 RETRY: Step {last_result.step_number} produced low-quality result. Attempt {retry_count + 1}/{max_retries}")
-                    
-                    # Decrement step to retry, increment retry counter
-                    state["current_step"] = current_step - 1
-                    state["retry_count"] = retry_count + 1
-                    
-                    # Remove the failed result
-                    if state["results"]:
-                        state["results"] = state["results"][:-1]
-                    
-                    return "continue"  # Retry the step
-                else:
-                    # Max retries reached, log warning and continue
-                    print(f"⚠️ WARNING: Step {last_result.step_number} failed after {max_retries} retries. Continuing...")
-                    state["retry_count"] = 0  # Reset for next step
-        
-        # Normal flow - check if workflow complete
-        if current_step >= len(workflow):
+        if state.get("current_step", 0) >= len(state["workflow"]):
             return "complete"
-        
-        # Reset retry count for new step
-        state["retry_count"] = 0
         return "continue"
-    
-    def make_decision_node(self, state: AgentState) -> AgentState:
+
+    def make_decision_node(self, state: AgentState) -> dict:
         """Node: Make final decision based on all results"""
         try:
             results = state.get("results", [])
@@ -211,19 +181,16 @@ Focus only on observable facts. Format your response as a single clear statement
                 "agent_type": "LangGraph Multi-Step Agent"
             }
             
-            state["decision"] = decision
-            return state
-            
+            return {"decision": decision}
+
         except Exception as e:
-            state["error"] = f"Decision error: {str(e)}"
-            return state
-    
-    def finalize_node(self, state: AgentState) -> AgentState:
+            return {"error": f"Decision error: {str(e)}"}
+
+    def finalize_node(self, state: AgentState) -> dict:
         """Node: Finalize and cleanup"""
         # Add results to history
-        if "results" in state:
-            self.analysis_history.extend(state["results"])
-        return state
+        self.analysis_history.extend(state.get("results", []))
+        return {}
     
     def _is_low_quality_result(self, result: str) -> bool:
         """
@@ -279,30 +246,23 @@ Focus only on observable facts. Format your response as a single clear statement
             "results": [],
             "decision": {},
             "pipeline": self.pipeline,
-            "error": ""
+            "error": "",
+            "retry_count": 0
         }
         
         # Execute the graph
         try:
-            # Run through the graph and collect intermediate states
-            for i, step_state in enumerate(self.graph.stream(initial_state)):
-                # Extract the actual state from the stream
-                if isinstance(step_state, dict):
-                    for node_name, node_state in step_state.items():
-                        if progress_callback and "current_step" in node_state:
-                            current = node_state.get("current_step", 0)
-                            total = len(workflow)
-                            if current <= total:
-                                message = workflow[current - 1].prompt if current > 0 else "Starting..."
-                                progress_callback(current - 1, total, message)
-            
-            # Get final state
+            # Run the graph once. stream_mode="values" yields the FULL state
+            # after every node, so the last item is the final state.
+            # (Running the graph a second time would repeat every VLM call.)
             final_state = initial_state
-            for step_output in self.graph.stream(initial_state):
-                if isinstance(step_output, dict):
-                    for node_name, node_state in step_output.items():
-                        final_state = node_state
-            
+            total = len(workflow)
+            for state in self.graph.stream(initial_state, stream_mode="values"):
+                final_state = state
+                current = state.get("current_step", 0)
+                if progress_callback and 0 < current <= total:
+                    progress_callback(current - 1, total, workflow[current - 1].prompt)
+
             return {
                 "results": final_state.get("results", []),
                 "decision": final_state.get("decision", {}),
@@ -366,6 +326,11 @@ def load_model(model_path, device="GPU"):
     with st.spinner("🤖 Loading LangGraph Vision Agent Model..."):
         try:
             pipeline = ov_genai.VLMPipeline(str(model_path), device)
+            # Phi-3.5 ends its turn with <|end|> (token 32007), but the exported
+            # generation_config.json only lists </s>: stop there, or it keeps writing.
+            _cfg = pipeline.get_generation_config()
+            _cfg.stop_token_ids = {32007}
+            pipeline.set_generation_config(_cfg)
             st.session_state["model_loaded"] = True
             st.session_state["pipe"] = pipeline
             st.session_state["agent"] = LangGraphVisionAgent(pipeline)

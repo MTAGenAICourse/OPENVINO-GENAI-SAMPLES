@@ -1,0 +1,42 @@
+# --- Secrets: never commit API keys ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+venv_*/
+.ipynb_checkpoints/
+
+# --- OpenVINO models (multi-GB; regenerate with optimum-cli, see README) ---
+Phi-3.5-vision-instruct-int4-ov/
+TinyLlama-1.1B-Chat-v1.0/
+dreamlike_anime_1_0_ov/
+stable-diffusion-ov/
+whisper-base/
+vits-piper-*/
+*.bin
+*.onnx
+
+# --- Generated output / temp files ---
+output/
+temp_video_*.mp4
+out.png
+kernel.errors.txt
+
+# --- Office lock files ---
+~$*
+
+# --- Local tool state ---
+.claude/
+.sensai/
+
+# --- More model folders (downloaded with hf download) ---
+Qwen3-*/
+*-int4-ov/
+*-int8-ov/
+*-fp16-ov/
+image.bmp

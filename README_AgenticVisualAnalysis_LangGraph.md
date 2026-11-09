@@ -1,4 +1,4 @@
- # 🤖 LangGraph Agentic Visual Analysis System
+# 🤖 LangGraph Agentic Visual Analysis System
 
 An advanced autonomous AI agent powered by **LangGraph** and OpenVINO GenAI that performs sophisticated multi-step visual analysis using state-of-the-art graph-based workflow orchestration. This application demonstrates the power of LangGraph for building robust, scalable, and maintainable agentic AI systems.
 

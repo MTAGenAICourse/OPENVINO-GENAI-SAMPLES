@@ -964,6 +964,15 @@ Response:"""
         
         try:
             # Select template based on model type
+            if self.model_name == "qwen3":
+                # 📚 Qwen3: OpenVINO GenAI applies the model's own chat template
+                # automatically. "/no_think" switches off its step-by-step
+                # reasoning, so it answers directly (faster, no <think> text).
+                system = "You are a helpful AI assistant. Be concise and direct. Only output the requested answer, nothing else."
+                result = str(pipeline.generate(system + "\n\n" + prompt + " /no_think", max_new_tokens=150))
+                result = re.sub(r"<think>.*?</think>", "", result, flags=re.S).strip()
+                return result if result else self._simulate_llm_response(prompt)
+
             if self.model_name == "phi3":
                 # Phi-3.5 chat template
                 template = "<|system|>\nYou are a helpful AI assistant. Be concise and direct. Only output the requested answer, nothing else.<|end|>\n<|user|>\n{}<|end|>\n<|assistant|>\n"
@@ -1230,7 +1239,9 @@ def load_model(model_path: str, device: str = "CPU", model_type: str = "openvino
             if OPENVINO_AVAILABLE and Path(model_path).exists():
                 # Detect model type based on path
                 model_path_lower = model_path.lower()
-                if "phi" in model_path_lower:
+                if "qwen" in model_path_lower:
+                    llm_type = "qwen3"
+                elif "phi" in model_path_lower:
                     llm_type = "phi3"
                 elif "tinyllama" in model_path_lower or "llama" in model_path_lower:
                     llm_type = "tinyllama"
@@ -1405,6 +1416,7 @@ def main():
         
         # Model selection - text-only LLMs
         model_options = {
+            "Qwen3 1.7B (Local, recommended)": {"type": "openvino", "path": "./Qwen3-1.7B-int4-ov"},
             "TinyLlama 1.1B (Local)": {"type": "openvino", "path": "./TinyLlama-1.1B-Chat-v1.0/"},
             "Azure OpenAI GPT-4o (Cloud)": {"type": "openai", "path": None},
             "Simulation Mode": {"type": "simulation", "path": None},

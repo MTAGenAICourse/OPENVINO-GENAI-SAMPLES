@@ -150,6 +150,11 @@ def load_model(model_path, device="GPU"):
     with st.spinner("🤖 Loading Vision Agent Model..."):
         try:
             pipeline = ov_genai.VLMPipeline(str(model_path), device)
+            # Phi-3.5 ends its turn with <|end|> (token 32007), but the exported
+            # generation_config.json only lists </s>: stop there, or it keeps writing.
+            _cfg = pipeline.get_generation_config()
+            _cfg.stop_token_ids = {32007}
+            pipeline.set_generation_config(_cfg)
             st.session_state["model_loaded"] = True
             st.session_state["pipe"] = pipeline
             st.session_state["agent"] = VisionAgent(pipeline)

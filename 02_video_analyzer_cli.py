@@ -63,6 +63,11 @@ def load_model(model_path, device="GPU"):
     print(f"Loading AI model from {model_path} on {device}...")
     try:
         pipeline = ov_genai.VLMPipeline(str(model_path), device)
+        # Phi-3.5 ends its turn with <|end|> (token 32007), but the exported
+        # generation_config.json only lists </s>: stop there, or it keeps writing.
+        _cfg = pipeline.get_generation_config()
+        _cfg.stop_token_ids = {32007}
+        pipeline.set_generation_config(_cfg)
         print("Model loaded successfully!")
         return pipeline
     except Exception as e:
@@ -177,7 +182,7 @@ def main():
     parser = argparse.ArgumentParser(description="Video Stream Analysis CLI")
     parser.add_argument("--source", required=True, help="Video source (file path, camera index, or URL)")
     parser.add_argument("--model", default="./Phi-3.5-vision-instruct-int4-ov/", help="Path to OpenVINO model")
-    parser.add_argument("--device", default="GPU", choices=["GPU", "CPU"], help="Device for inference")
+    parser.add_argument("--device", default="CPU", choices=["CPU", "GPU"], help="Device for inference (start on CPU, then try GPU)")
     parser.add_argument("--interval", type=float, default=1.0, help="Analysis interval in seconds")
     parser.add_argument("--prompt", default="What's happening in this frame?", help="Analysis prompt")
     parser.add_argument("--display", action="store_true", help="Display video frames")
@@ -212,17 +217,23 @@ def main():
     
     # Initialize variables
     frame_count = 0
-    last_analysis_time = 0
-    
+    last_analysis_time = None
+
+    # For video files, measure the interval in *video* time (frame index / fps).
+    # Wall-clock time would analyze every frame back to back, because each
+    # analysis takes longer than the interval. Live cameras keep wall-clock time.
+    fps = cap.get(cv2.CAP_PROP_FPS) or 0
+    is_file = cap.get(cv2.CAP_PROP_FRAME_COUNT) > 0 and fps > 0
+
     try:
         while True:
             ret, frame = cap.read()
             if not ret:
                 print("End of video stream reached")
                 break
-                
+
             frame_count += 1
-            current_time = time.time()
+            current_time = frame_count / fps if is_file else time.time()
             
             # Display frame if requested
             if args.display:
@@ -233,7 +244,7 @@ def main():
                     break
             
             # Check if it's time to analyze a frame
-            if current_time - last_analysis_time >= args.interval:
+            if last_analysis_time is None or current_time - last_analysis_time >= args.interval:
                 print(f"\nAnalyzing frame {frame_count}...")
                 
                 # Process image
