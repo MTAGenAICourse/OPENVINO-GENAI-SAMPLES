@@ -416,7 +416,7 @@ def main():
             
             if image_data:
                 image = Image.open(io.BytesIO(image_data.getvalue() if hasattr(image_data, 'getvalue') else image_data.read()))
-                st.image(image, caption="Input Image", width="auto")
+                st.image(image, caption="Input Image", width="content")
         
         with col2:
             st.subheader("🎯 Workflow Selection")
@@ -443,7 +443,7 @@ def main():
                     workflows[workflow_type].append(new_step)
         
         # Execute workflow
-        if image_data and st.button("🚀 Execute LangGraph Agent Workflow", type="primary", use_container_width=True):
+        if image_data and st.button("🚀 Execute LangGraph Agent Workflow", type="primary", width="stretch"):
             progress_placeholder = st.empty()
             status_placeholder = st.empty()
             
@@ -517,7 +517,7 @@ def main():
                     col_x, col_y = st.columns([1, 2])
                     
                     with col_x:
-                        st.image(result_data["image"], caption="Analyzed Image", width="auto")
+                        st.image(result_data["image"], caption="Analyzed Image", width="content")
                     
                     with col_y:
                         st.markdown("**LangGraph Workflow Results:**")

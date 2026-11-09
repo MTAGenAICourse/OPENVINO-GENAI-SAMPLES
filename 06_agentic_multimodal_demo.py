@@ -655,7 +655,7 @@ def render_image_analysis_demo():
             st.info("📌 Using sample gradient image. Upload your own for better results!")
         
         if image:
-            st.image(image, caption="Input Image", use_container_width=True)
+            st.image(image, caption="Input Image", width="stretch")
     
     with col2:
         st.subheader("🔬 Analysis Settings")
@@ -901,7 +901,7 @@ def render_full_pipeline_demo():
         
         if uploaded_image:
             image = Image.open(uploaded_image).convert("RGB")
-            st.image(image, caption="Input Image", use_container_width=True)
+            st.image(image, caption="Input Image", width="stretch")
     
     with col2:
         st.markdown("**Pipeline Steps:**")

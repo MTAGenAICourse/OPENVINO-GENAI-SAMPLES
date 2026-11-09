@@ -133,7 +133,7 @@ def main():
     # Process image if available
     if camera_image is not None:
         with preview_col:
-            st.image(camera_image, caption="Captured Image", use_container_width=True)
+            st.image(camera_image, caption="Captured Image", width="stretch")
         
         # Process the image
         image = Image.open(io.BytesIO(camera_image.getvalue()))
@@ -174,7 +174,7 @@ def main():
             with st.expander(f"Entry {i+1} - {entry['timestamp']}"):
                 cols = st.columns(2)
                 with cols[0]:
-                    st.image(entry["image"], caption="Captured Image", use_container_width=True)
+                    st.image(entry["image"], caption="Captured Image", width="stretch")
                 with cols[1]:
                     st.markdown(f"**Prompt:** {entry['prompt']}")
                     st.markdown(f"**Description:** {entry['description']}")

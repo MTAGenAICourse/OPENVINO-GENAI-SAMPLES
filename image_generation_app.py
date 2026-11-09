@@ -525,7 +525,7 @@ def main():
         col1, col2, col3 = st.columns([2, 1, 1])
         
         with col1:
-            generate_btn = st.button("🎨 Generate Image", type="primary", use_container_width=True)
+            generate_btn = st.button("🎨 Generate Image", type="primary", width="stretch")
         
         with col2:
             num_variations = st.number_input("Variations", min_value=1, max_value=5, value=1)
@@ -615,7 +615,7 @@ def main():
                 cols = st.columns(min(num_variations, 3))
                 for idx, item in enumerate(generated_batch):
                     with cols[idx % 3]:
-                        st.image(item['image'], use_container_width=True)
+                        st.image(item['image'], width="stretch")
                         st.caption(f"🤖 Model: {actual_model_name}")
                         st.download_button(
                             "⬇️ Download",
@@ -654,7 +654,7 @@ def main():
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            free_generate_btn = st.button("🎨 Generate", type="primary", use_container_width=True, key="free_gen_btn")
+            free_generate_btn = st.button("🎨 Generate", type="primary", width="stretch", key="free_gen_btn")
         with col2:
             free_child_friendly = st.checkbox("Child-Friendly", key="free_child")
         
@@ -724,7 +724,7 @@ def main():
                     
                     col1, col2 = st.columns([2, 1])
                     with col1:
-                        st.image(image, use_container_width=True)
+                        st.image(image, width="stretch")
                     with col2:
                         st.info(f"**Model:** {actual_model_name}\n\n**Device:** {device}\n\n**Size:** {width}x{height}\n\n**Steps:** {num_inference_steps}")
                         st.download_button(
@@ -772,7 +772,7 @@ def main():
                     if img_idx < len(st.session_state.generated_images):
                         item = st.session_state.generated_images[img_idx]
                         with col:
-                            st.image(item['image'], use_container_width=True)
+                            st.image(item['image'], width="stretch")
                             with st.expander("📋 Details"):
                                 st.caption(f"**Prompt:** {item['prompt'][:100]}...")
                                 st.caption(f"**Model:** {item.get('model_name', 'Unknown')}")
@@ -863,7 +863,7 @@ def main():
                             if os.path.exists(path):
                                 with cols[img_idx % 4]:
                                     img = Image.open(path)
-                                    st.image(img, use_container_width=True)
+                                    st.image(img, width="stretch")
                                     st.download_button(
                                         "⬇️",
                                         data=open(path, 'rb').read(),
